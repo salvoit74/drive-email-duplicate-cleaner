@@ -66,7 +66,8 @@ function App() {
 };
 
 
-  return (
+return (
+  <>
     <div style={{ padding: 20 }}>
       {!tokens?.access_token ? (
         <button onClick={() => login()}>🔐 Login with Google</button>
@@ -90,12 +91,14 @@ function App() {
         </>
       )}
     </div>
-    <div id="pers">
+
+    <div id='pers'>
       <table>
-        <tr><td>drive and email no more grown</td></tr>
+        <tr><td><p>drive and email no more grown</p></td></tr>
       </table>
     </div>
-  );
+  </>
+);
 }
 
 export default App;
