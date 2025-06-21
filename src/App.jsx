@@ -42,6 +42,29 @@ function App() {
     const result = await res.json();
     setFiles(result.files || []);
   };
+  
+  const exchangeCode = async (code) => {
+  try {
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: '97567018283-qhsa8t5j1s1ae563p0ae632dmrruqgeh.apps.googleusercontent.com',
+        client_secret: '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',
+        redirect_uri: 'https://salvoit74.github.io/drive-email-duplicate-cleaner/',
+        grant_type: 'authorization_code',
+      }),
+    });
+
+    const data = await res.json();
+    console.log('🔐 Token exchange result:', data);
+    setTokens(data);
+  } catch (err) {
+    console.error('❌ Token exchange error:', err);
+  }
+};
+
 
   return (
     <div style={{ padding: 20 }}>
