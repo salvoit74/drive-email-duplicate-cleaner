@@ -10,26 +10,7 @@ function App() {
     flow: 'auth-code',
     scope: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email',
     onSuccess: async ({ code }) => {
-      const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          code,
-          client_id: '97567018283-qhsa8t5j1s1ae563p0ae632dmrruqgeh.apps.googleusercontent.com',
-          client_secret: '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',
-          redirect_uri: 'https://salvoit74.github.io/drive-email-duplicate-cleaner/',
-          grant_type: 'authorization_code',
-        }),
-      });
-
-      const data = await tokenResponse.json();
-      setTokens(data);
-
-      const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-        headers: { Authorization: `Bearer ${data.access_token}` },
-      });
-      const userInfo = await userRes.json();
-      setEmail(userInfo.email);
+      exchangeCode(code);
     },
     onError: (err) => console.error('Login Failed', err),
   });
@@ -43,7 +24,7 @@ function App() {
     setFiles(result.files || []);
   };
   
-  const exchangeCode = async (code) => {
+const exchangeCode = async (code) => {
   try {
     const res = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
@@ -59,11 +40,25 @@ function App() {
 
     const data = await res.json();
     console.log('🔐 Token exchange result:', data);
-    setTokens(data);
+
+    if (data.access_token) {
+      setTokens(data);
+
+      const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${data.access_token}` },
+      });
+
+      const userInfo = await userRes.json();
+      console.log('📧 User info:', userInfo);
+      setEmail(userInfo.email);
+    } else {
+      console.error('❌ Token exchange failed:', data);
+    }
   } catch (err) {
-    console.error('❌ Token exchange error:', err);
+    console.error('❌ Exchange request failed:', err);
   }
 };
+
 
 
 return (
