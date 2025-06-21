@@ -9,11 +9,13 @@ function App() {
   const login = useGoogleLogin({
     flow: 'auth-code',
     scope: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email',
-    onSuccess: async ({ code }) => {
+    onSuccess: ({ code }) => {
+      console.log('✅ Code received:', code);
       exchangeCode(code);
     },
-    onError: (err) => console.error('Login Failed', err),
+    onError: (err) => console.error('❌ Login failed:', err),
   });
+
 
   const fetchFiles = async () => {
     const res = await fetch(
@@ -23,23 +25,17 @@ function App() {
     const result = await res.json();
     setFiles(result.files || []);
   };
-  
+
 const exchangeCode = async (code) => {
   try {
-    const res = await fetch('https://oauth2.googleapis.com/token', {
+    const res = await fetch('http://localhost:3000/exchange-code', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        code,
-        client_id: '97567018283-qhsa8t5j1s1ae563p0ae632dmrruqgeh.apps.googleusercontent.com',
-        client_secret: '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',
-        redirect_uri: 'https://salvoit74.github.io/drive-email-duplicate-cleaner/',
-        grant_type: 'authorization_code',
-      }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
     });
 
     const data = await res.json();
-    console.log('🔐 Token exchange result:', data);
+    console.log('🔐 Token exchange result from local server:', data);
 
     if (data.access_token) {
       setTokens(data);
