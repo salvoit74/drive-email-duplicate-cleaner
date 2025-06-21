@@ -90,6 +90,11 @@ function App() {
         </>
       )}
     </div>
+    <div id="pers">
+      <table>
+        <tr><td>drive and email no more grown</td></tr>
+      </table>
+    </div>
   );
 }
 
