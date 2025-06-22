@@ -28,7 +28,8 @@ function App() {
 
 const exchangeCode = async (code) => {
   try {
-    const res = await fetch('http://localhost:3000/exchange-code', {
+    console.log('Call 3000');
+	const res = await fetch('http://localhost:3000/exchange-code', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code }),
@@ -84,9 +85,11 @@ return (
     </div>
 
     <div id='after'>
-      <table>
+      <table><thead>
+			<tr><th>Header</th></tr>
+		</thead><tbody>
         <tr><td><p>drive and email no more grown<br /></p></td></tr>
-      </table>
+      </tbody><tfoot></tfoot></table>
     </div>
   </>
 );

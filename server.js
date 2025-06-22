@@ -8,7 +8,9 @@ const app = express();
 const PORT = 3000;
 
 app.use(cors());
-app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true })); // ✅ handles URL-encoded form
+app.use(bodyParser.json());                         // ✅ handles JSON too (optional for future use)
+
 
 app.post('/exchange-code', async (req, res) => {
   const { code } = req.body;
@@ -33,6 +35,10 @@ app.post('/exchange-code', async (req, res) => {
     });
 
     const tokenData = await tokenRes.json();
+    if (!tokenRes.ok) {
+      console.error('❌ Google token API error:', tokenData);
+      return res.status(tokenRes.status).json(tokenData);
+    }
     res.json(tokenData);
   } catch (err) {
     console.error('❌ Token exchange failed:', err);
