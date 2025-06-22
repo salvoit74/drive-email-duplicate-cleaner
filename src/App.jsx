@@ -68,11 +68,17 @@ function App() {
 
   const fetchFiles = async () => {
     const res = await fetch(
-      'https://www.googleapis.com/drive/v3/files?pageSize=500&fields=files(id,name,size,md5Checksum)',
+      'https://www.googleapis.com/drive/v3/files?pageSize=500&fields=files(id,name,size,md5Checksum,parents)',
       { headers: { Authorization: `Bearer ${tokens.access_token}` } }
     );
     const result = await res.json();
-    setFiles(result.files || []);
+    // Filter files with a checksum and valid size, then sort by size descending
+    const filteredSorted = (result.files || [])
+      .filter(file => file.md5Checksum && file.size) // only files with checksum and size
+      .sort((a, b) => Number(b.size) - Number(a.size)); // sort descending
+    
+    setFiles(filteredSorted);
+
   };
 
   return (
@@ -89,14 +95,36 @@ function App() {
             <button onClick={fetchFiles} style={{ marginLeft: 10 }}>
               📁 Fetch Drive Files
             </button>
-
-            <ul style={{ marginTop: 20 }}>
-              {files.map((file) => (
-                <li key={file.id}>
-                  {file.name} – {file.size ?? 'n/a'} bytes – {file.md5Checksum ?? 'no checksum'}
-                </li>
-              ))}
-            </ul>
+            <table style={{ marginTop: 20, borderCollapse: 'collapse', width: '100%' }}>
+              <thead>
+                <tr>
+                  <th style={{ borderBottom: '1px solid #ccc', padding: '8px', textAlign: 'left' }}>File Name</th>
+                  <th style={{ borderBottom: '1px solid #ccc', padding: '8px', textAlign: 'left' }}>Size (MB)</th>
+                  <th style={{ borderBottom: '1px solid #ccc', padding: '8px', textAlign: 'left' }}>MD5 Checksum</th>
+                  <th style={{ borderBottom: '1px solid #ccc', padding: '8px', textAlign: 'left' }}>Folder</th>
+                </tr>
+              </thead>
+              <tbody>
+                {files.map((file) => (
+                  <tr key={file.id}>
+                    <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>{file.name}</td>
+                    <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>
+                      {(file.size / (1024 * 1024)).toFixed(2)}
+                    </td>
+                    <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>{file.md5Checksum}</td>
+                    <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>
+                      {file.parents?.length ? (
+                        <a href={`https://drive.google.com/drive/folders/${file.parents[0]}`} target="_blank" rel="noopener noreferrer">
+                          Open Folder
+                        </a>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </>
         )}
       </div>

@@ -1,6 +1,8 @@
 #Secret
 .env
-.provalo.txt
+
+#Notes and Old Version 
+*.txt
 
 # Logs
 logs
