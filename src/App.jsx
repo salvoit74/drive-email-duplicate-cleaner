@@ -28,7 +28,7 @@ function App() {
 
 const exchangeCode = async (code) => {
   try {
-    console.log('Call 3000');
+    console.log('Call for token from code');
 	const res = await fetch('https://grilletta.it/hugestore-code.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
