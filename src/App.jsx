@@ -6,18 +6,16 @@ function App() {
   const [files, setFiles] = useState([]);
   const [emails, setEmails] = useState([]);
   const [senderStats, setSenderStats] = useState([]);
-  const [view, setView] = useState('none');
+  const [view, setView] = useState('');
 
   const CLIENT_ID = '97567018283-qhsa8t5j1s1ae563p0ae632dmrruqgeh.apps.googleusercontent.com';
   const REDIRECT_URI = 'https://salvoit74.github.io/drive-email-duplicate-cleaner';
-  const SCOPES = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/gmail.readonly';
-
-  const thStyle = { borderBottom: '1px solid #ccc', padding: '8px', textAlign: 'left' };
-  const tdStyle = { borderBottom: '1px solid #eee', padding: '8px' };
+  const SCOPES = 'https://www.googleapis.com/auth/photoslibrary.readonly https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/gmail.readonly';
 
   const startGoogleLogin = () => {
     const state = crypto.randomUUID();
     localStorage.setItem('oauth_state', state);
+
     const url = `https://accounts.google.com/o/oauth2/auth?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=${encodeURIComponent(SCOPES)}&access_type=offline&prompt=consent&state=${state}`;
     window.location.assign(url);
   };
@@ -40,26 +38,28 @@ function App() {
       const res = await fetch('https://grilletta.it/hugestore-code.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code })
+        body: JSON.stringify({ code }),
       });
+
       const data = await res.json();
       if (data.access_token) {
         setTokens(data);
         const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: { Authorization: `Bearer ${data.access_token}` }
+          headers: { Authorization: `Bearer ${data.access_token}` },
         });
         const userInfo = await userRes.json();
         setEmail(userInfo.email);
       }
     } catch (err) {
-      console.error('Token exchange failed', err);
+      console.error('❌ Exchange request failed:', err);
     }
   };
 
   const fetchFiles = async () => {
-    const res = await fetch('https://www.googleapis.com/drive/v3/files?pageSize=500&fields=files(id,name,size,md5Checksum,parents)', {
-      headers: { Authorization: `Bearer ${tokens.access_token}` }
-    });
+    const res = await fetch(
+      'https://www.googleapis.com/drive/v3/files?pageSize=500&fields=files(id,name,size,md5Checksum,parents)',
+      { headers: { Authorization: `Bearer ${tokens.access_token}` } }
+    );
     const result = await res.json();
     const filteredSorted = (result.files || [])
       .filter(file => file.md5Checksum && file.size)
@@ -70,6 +70,7 @@ function App() {
   const findDuplicates = () => {
     const checksumMap = {};
     const duplicates = [];
+
     for (const file of files) {
       if (!file.md5Checksum) continue;
       if (checksumMap[file.md5Checksum]) {
@@ -82,6 +83,7 @@ function App() {
         checksumMap[file.md5Checksum] = { file, seen: false };
       }
     }
+
     setFiles(duplicates);
   };
 
@@ -99,12 +101,14 @@ function App() {
       return await msgRes.json();
     }));
 
-    const sorted = detailed.map(m => ({
-      id: m.id,
-      sizeEstimate: m.sizeEstimate,
-      from: m.payload?.headers?.find(h => h.name === 'From')?.value ?? 'unknown',
-      subject: m.payload?.headers?.find(h => h.name === 'Subject')?.value ?? '(no subject)'
-    })).sort((a, b) => a.sizeEstimate - b.sizeEstimate);
+    const sorted = detailed
+      .map(m => ({
+        id: m.id,
+        sizeEstimate: m.sizeEstimate,
+        from: m.payload?.headers?.find(h => h.name === 'From')?.value ?? 'unknown',
+        subject: m.payload?.headers?.find(h => h.name === 'Subject')?.value ?? '(no subject)'
+      }))
+      .sort((a, b) => b.sizeEstimate - a.sizeEstimate);
 
     setEmails(sorted);
   };
@@ -131,99 +135,207 @@ function App() {
 
     const list = Object.entries(senderCount)
       .map(([sender, count]) => ({ sender, count }))
-      .sort((a, b) => a.count - b.count);
+      .sort((a, b) => b.count - a.count);
 
     setSenderStats(list);
   };
+  
+    const fetchPhotos = async () => {
+    const res = await fetch('https://photoslibrary.googleapis.com/v1/mediaItems?pageSize=100', {
+      headers: { Authorization: `Bearer ${tokens.access_token}` }
+    });
+    const { mediaItems } = await res.json();
+    if (!mediaItems) return;
+
+    const mapped = mediaItems.map(item => ({
+      id: item.id,
+      name: item.filename,
+      size: item.mediaMetadata?.fileSize || 0,
+      albumId: item.productUrl?.match(/\/album\/([\w-]+)/)?.[1],
+      checksum: item.filename // you can hash this if needed
+    }));
+
+    const sorted = mapped.sort((a, b) => b.size - a.size);
+    setFiles(sorted);
+    setView('photos');
+  };
+
+  const findDuplicatesPhoto = () => {
+    const map = {};
+    const dupes = [];
+    for (const file of files) {
+      if (!file.checksum) continue;
+      if (map[file.checksum]) {
+        if (!map[file.checksum].seen) {
+          dupes.push(map[file.checksum].file);
+          map[file.checksum].seen = true;
+        }
+        dupes.push(file);
+      } else {
+        map[file.checksum] = { file, seen: false };
+      }
+    }
+    setFiles(dupes);
+  };
+  
+  const thStyle = { borderBottom: '1px solid #ccc', padding: '8px', textAlign: 'left' };
+  const tdStyle = { borderBottom: '1px solid #eee', padding: '8px' };
 
   return (
-    <div style={{ padding: 20 }}>
-      {!tokens?.access_token ? (
-        <button onClick={startGoogleLogin}>🔐 Login with Google</button>
-      ) : (
-        <>
-          <p>✅ Logged in as: {email}</p>
-          <button onClick={() => { setTokens(null); setEmail(''); setFiles([]); }}>Logout</button>
-          <button onClick={() => { fetchFiles(); setView('drive'); }}>📁 Fetch Drive Files (ordered by size)</button>
-          <button onClick={() => { findDuplicates(); setView('duplicates'); }} style={{ marginLeft: 10 }}>🔍 Find Duplicates</button>
-          <button onClick={() => { fetchEmailSizes(); setView('email'); }} style={{ marginLeft: 10 }}>📧 Fetch Gmail Emails (ordered by size)</button>
-          <button onClick={() => { fetchSendersCount(); setView('senders'); }} style={{ marginLeft: 10 }}>👤 Count Emails by Sender</button>
+    <>
+      <div style={{ padding: 20 }}>
+        {!tokens?.access_token ? (
+          <button onClick={startGoogleLogin}>🔐 Login with Google</button>
+        ) : (
+          <>
+            <p>✅ Logged in as: {email}</p>
+            <button onClick={() => { setTokens(null); setEmail(''); setFiles([]); setEmails([]); setSenderStats([]); setView(''); }}>
+              Logout
+            </button>
+            <button onClick={() => { fetchFiles(); setView('drive'); }}>
+              📁 Fetch Drive Files (ordered by size)
+            </button>
+            <button onClick={() => { findDuplicates(); setView('duplicates'); }} style={{ marginLeft: 10 }}>
+              🔍 Find Duplicates
+            </button>
+            <button onClick={() => { fetchEmailSizes(); setView('email'); }} style={{ marginLeft: 10 }}>
+              📧 Fetch Gmail Emails (ordered by size)
+            </button>
+            <button onClick={() => { fetchSendersCount(); setView('senders'); }} style={{ marginLeft: 10 }}>
+              👤 Count Emails by Sender (ordered by count)
+            </button>
+            <button onClick={fetchPhotos} style={{ marginLeft: 10 }}>
+              🖼 Fetch Google Photos (ordered by size)
+            </button>
+            <button onClick={findDuplicatesPhoto} style={{ marginLeft: 10 }}>
+              🔍 Find Duplicates Photos
+            </button>
 
-          {view === 'drive' && (
-            <table style={{ marginTop: 20, borderCollapse: 'collapse', width: '100%' }}>
-              <thead>
-                <tr>
-                  <th style={thStyle}>File Name</th>
-                  <th style={thStyle}>Size (MB)</th>
-                  <th style={thStyle}>MD5 Checksum</th>
-                  <th style={thStyle}>Folder</th>
-                </tr>
-              </thead>
-              <tbody>
-                {files.map((file) => (
-                  <tr key={file.id}>
-                    <td style={tdStyle}>{file.name}</td>
-                    <td style={tdStyle}>{(file.size / (1024 * 1024)).toFixed(2)}</td>
-                    <td style={tdStyle}>{file.md5Checksum}</td>
-                    <td style={tdStyle}>
-                      {file.parents?.length ? (
-                        <a href={`https://drive.google.com/drive/folders/${file.parents[0]}`} target="_blank" rel="noopener noreferrer">Open Folder</a>
-                      ) : '—'}
-                    </td>
+            {view === 'drive' && (
+              <table style={{ marginTop: 20, borderCollapse: 'collapse', width: '100%' }}>
+                <thead>
+                  <tr>
+                    <th>File Name</th>
+                    <th>Size (MB)</th>
+                    <th>MD5 Checksum</th>
+                    <th>Folder</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+                </thead>
+                <tbody>
+                  {files.map((file) => (
+                    <tr key={file.id}>
+                      <td>{file.name}</td>
+                      <td>{(file.size / (1024 * 1024)).toFixed(2)}</td>
+                      <td>{file.md5Checksum}</td>
+                      <td>
+                        {file.parents?.length ? (
+                          <a href={`https://drive.google.com/drive/folders/${file.parents[0]}`} target="_blank" rel="noopener noreferrer">
+                            Open Folder
+                          </a>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            {view === 'photos' && (
+               <table style={{ marginTop: 20, borderCollapse: 'collapse', width: '100%' }}>
+                 <thead>
+                   <tr>
+                     <th style={thStyle}>File Name</th>
+                     <th style={thStyle}>Size (MB)</th>
+                     <th style={thStyle}>Checksum</th>
+                     <th style={thStyle}>Folder</th>
+                   </tr>
+                 </thead>
+                 <tbody>
+                   {files.map(file => (
+                     <tr key={file.id}>
+                       <td style={tdStyle}>{file.name}</td>
+                       <td style={tdStyle}>{(file.size / 1024 / 1024).toFixed(2)}</td>
+                       <td style={tdStyle}>{file.checksum}</td>
+                       <td style={tdStyle}>
+                         {file.albumId ? (
+                           <a href={`https://photos.google.com/album/${file.albumId}`} target="_blank" rel="noreferrer">
+                             Open Album
+                           </a>
+                         ) : '—'}
+                       </td>
+                     </tr>
+                   ))}
+                 </tbody>
+               </table>
+            )}
+            {view === 'email' && (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Subject</th>
+                    <th>Size (MB)</th>
+                    <th>Sender</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {emails.map((email) => (
+                    <tr key={email.id}>
+                      <td>
+                        <a
+                          href={`https://mail.google.com/mail/u/0/#all/${email.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {email.subject}
+                        </a>
+                      </td>
+                      <td>{(email.sizeEstimate / 1024 / 1024).toFixed(2)}</td>
+                      <td>
+                        <a
+                          href={`https://mail.google.com/mail/u/0/#search/from%3A${encodeURIComponent(email.from)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {email.from}
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
 
-          {view === 'email' && (
-            <table style={{ marginTop: 20 }}>
-              <thead>
-                <tr>
-                  <th>Subject</th>
-                  <th>Size (MB)</th>
-                  <th>Sender</th>
-                </tr>
-              </thead>
-              <tbody>
-                {emails.map((email) => (
-                  <tr key={email.id}>
-                    <td>
-                      <a href={`https://mail.google.com/mail/u/0/#all/${email.id}`} target="_blank" rel="noopener noreferrer">{email.subject}</a>
-                    </td>
-                    <td>{(email.sizeEstimate / 1024 / 1024).toFixed(2)}</td>
-                    <td>
-                      <a href={`https://mail.google.com/mail/u/0/#search/from%3A${encodeURIComponent(email.from)}`} target="_blank" rel="noopener noreferrer">{email.from}</a>
-                    </td>
+            {view === 'senders' && (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Sender</th>
+                    <th>Email Count</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-
-          {view === 'senders' && (
-            <table style={{ marginTop: 20 }}>
-              <thead>
-                <tr>
-                  <th>Sender</th>
-                  <th>Email Count</th>
-                </tr>
-              </thead>
-              <tbody>
-                {senderStats.map((item, idx) => (
-                  <tr key={idx}>
-                    <td>
-                      <a href={`https://mail.google.com/mail/u/0/#search/from%3A${encodeURIComponent(item.sender)}`} target="_blank" rel="noopener noreferrer">{item.sender}</a>
-                    </td>
-                    <td>{item.count}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </>
-      )}
-    </div>
+                </thead>
+                <tbody>
+                  {senderStats.map((item, index) => (
+                    <tr key={index}>
+                      <td>
+                        <a
+                          href={`https://mail.google.com/mail/u/0/#search/from%3A${encodeURIComponent(item.sender)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {item.sender}
+                        </a>
+                      </td>
+                      <td>{item.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
+        )}
+      </div>
+    </>
   );
 }
 
