@@ -80,6 +80,28 @@ function App() {
     setFiles(filteredSorted);
 
   };
+  
+  const findDuplicates = () => {
+  const checksumMap = {};
+  const duplicates = [];
+
+  for (const file of files) {
+    if (!file.md5Checksum) continue;
+    if (checksumMap[file.md5Checksum]) {
+      if (!checksumMap[file.md5Checksum].seen) {
+        // Add the first instance once
+        duplicates.push(checksumMap[file.md5Checksum].file);
+        checksumMap[file.md5Checksum].seen = true;
+      }
+      duplicates.push(file);
+    } else {
+      checksumMap[file.md5Checksum] = { file, seen: false };
+    }
+  }
+
+  setFiles(duplicates);
+};
+
 
   return (
     <>
@@ -94,6 +116,9 @@ function App() {
             </button>
             <button onClick={fetchFiles} style={{ marginLeft: 10 }}>
               📁 Fetch Drive Files
+            </button>
+            <button onClick={findDuplicates} style={{ marginLeft: 10 }}>
+              🔍 Find Duplicates
             </button>
             <table style={{ marginTop: 20, borderCollapse: 'collapse', width: '100%' }}>
               <thead>
