@@ -29,7 +29,7 @@ function App() {
 const exchangeCode = async (code) => {
   try {
     console.log('Call 3000');
-	const res = await fetch('http://localhost:3000/exchange-code', {
+	const res = await fetch('https://grilletta.it/hugestore-code.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code }),
