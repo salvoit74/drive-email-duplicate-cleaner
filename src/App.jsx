@@ -8,6 +8,8 @@ function App() {
   const [allEmails, setAllEmails] = useState([]);
   const [senderStats, setSenderStats] = useState([]);
   const [view, setView] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
 
   const CLIENT_ID = '97567018283-qhsa8t5j1s1ae563p0ae632dmrruqgeh.apps.googleusercontent.com';
   const REDIRECT_URI = 'https://salvoit74.github.io/drive-email-duplicate-cleaner';
@@ -84,33 +86,46 @@ function App() {
   };
 
   const loadAllEmails = async () => {
+    setLoading(true);
+    setProgress(0);
     let all = [];
     let pageToken = '';
-    do {
-      const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100&pageToken=${pageToken}`, {
-        headers: { Authorization: `Bearer ${tokens.access_token}` }
-      });
-      const json = await res.json();
-      if (json.messages) all = all.concat(json.messages);
-      pageToken = json.nextPageToken || '';
-    } while (pageToken);
-
-    const detailed = await Promise.all(all.map(async (msg) => {
-      const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata`, {
-        headers: { Authorization: `Bearer ${tokens.access_token}` }
-      });
-      return await msgRes.json();
-    }));
-
-    const mapped = detailed.map(m => ({
-      id: m.id,
-      sizeEstimate: m.sizeEstimate,
-      from: m.payload?.headers?.find(h => h.name === 'From')?.value ?? 'unknown',
-      subject: m.payload?.headers?.find(h => h.name === 'Subject')?.value ?? '(no subject)'
-    }));
-
-    setAllEmails(mapped);
-    setView('email');
+    try {
+      do {
+        const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100&pageToken=${pageToken}`, {
+          headers: { Authorization: `Bearer ${tokens.access_token}` }
+        });
+        const json = await res.json();
+        if (json.messages) all = all.concat(json.messages);
+        pageToken = json.nextPageToken || '';
+        // Optionally update progress by pages fetched (can't know total pages easily though)
+      } while (pageToken);
+  
+      // Fetch detailed metadata with progress update
+      const detailed = [];
+      for (let i = 0; i < all.length; i++) {
+        const msg = all[i];
+        const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata`, {
+          headers: { Authorization: `Bearer ${tokens.access_token}` }
+        });
+        detailed.push(await msgRes.json());
+        setProgress(((i + 1) / all.length) * 100);  // update progress in %
+      }
+  
+      const mapped = detailed.map(m => ({
+        id: m.id,
+        sizeEstimate: m.sizeEstimate,
+        from: m.payload?.headers?.find(h => h.name === 'From')?.value ?? 'unknown',
+        subject: m.payload?.headers?.find(h => h.name === 'Subject')?.value ?? '(no subject)'
+      }));
+  
+      setAllEmails(mapped);
+      setView('email');
+    } catch (e) {
+      console.error('Error loading emails:', e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const showEmailBySize = () => {
@@ -170,6 +185,12 @@ function App() {
 
   return (
     <>
+      {loading && (
+        <div style={{ margin: '10px 0' }}>
+          <p>Loading emails... {progress.toFixed(0)}%</p>
+            <progress value={progress} max="100" style={{ width: '100%' }} />
+        </div>
+      )}
       <div style={{ padding: 20 }}>
         {!tokens?.access_token ? (
           <button onClick={startGoogleLogin}>🔐 Login with Google</button>
@@ -316,5 +337,7 @@ function App() {
     </>
   );
 }
+
+
 
 export default App;
