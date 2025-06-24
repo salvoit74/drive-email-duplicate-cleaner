@@ -5,6 +5,7 @@ function App() {
   const [email, setEmail] = useState('');
   const [files, setFiles] = useState([]);
   const [emails, setEmails] = useState([]);
+  const [allEmails, setAllEmails] = useState([]);
   const [senderStats, setSenderStats] = useState([]);
   const [view, setView] = useState('');
 
@@ -15,7 +16,6 @@ function App() {
   const startGoogleLogin = () => {
     const state = crypto.randomUUID();
     localStorage.setItem('oauth_state', state);
-
     const url = `https://accounts.google.com/o/oauth2/auth?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=${encodeURIComponent(SCOPES)}&access_type=offline&prompt=consent&state=${state}`;
     window.location.assign(url);
   };
@@ -25,7 +25,6 @@ function App() {
     const code = url.searchParams.get('code');
     const state = url.searchParams.get('state');
     const storedState = localStorage.getItem('oauth_state');
-
     if (code && state === storedState) {
       exchangeCode(code);
       const cleanUrl = window.location.origin + window.location.pathname;
@@ -40,7 +39,6 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code }),
       });
-
       const data = await res.json();
       if (data.access_token) {
         setTokens(data);
@@ -70,7 +68,6 @@ function App() {
   const findDuplicates = () => {
     const checksumMap = {};
     const duplicates = [];
-
     for (const file of files) {
       if (!file.md5Checksum) continue;
       if (checksumMap[file.md5Checksum]) {
@@ -83,78 +80,68 @@ function App() {
         checksumMap[file.md5Checksum] = { file, seen: false };
       }
     }
-
     setFiles(duplicates);
   };
 
-  const fetchEmailSizes = async () => {
-    const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100', {
-      headers: { Authorization: `Bearer ${tokens.access_token}` }
-    });
-    const { messages } = await res.json();
-    if (!messages) return;
+  const loadAllEmails = async () => {
+    let all = [];
+    let pageToken = '';
+    do {
+      const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100&pageToken=${pageToken}`, {
+        headers: { Authorization: `Bearer ${tokens.access_token}` }
+      });
+      const json = await res.json();
+      if (json.messages) all = all.concat(json.messages);
+      pageToken = json.nextPageToken || '';
+    } while (pageToken);
 
-    const detailed = await Promise.all(messages.map(async (msg) => {
+    const detailed = await Promise.all(all.map(async (msg) => {
       const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata`, {
         headers: { Authorization: `Bearer ${tokens.access_token}` }
       });
       return await msgRes.json();
     }));
 
-    const sorted = detailed
-      .map(m => ({
-        id: m.id,
-        sizeEstimate: m.sizeEstimate,
-        from: m.payload?.headers?.find(h => h.name === 'From')?.value ?? 'unknown',
-        subject: m.payload?.headers?.find(h => h.name === 'Subject')?.value ?? '(no subject)'
-      }))
-      .sort((a, b) => b.sizeEstimate - a.sizeEstimate);
+    const mapped = detailed.map(m => ({
+      id: m.id,
+      sizeEstimate: m.sizeEstimate,
+      from: m.payload?.headers?.find(h => h.name === 'From')?.value ?? 'unknown',
+      subject: m.payload?.headers?.find(h => h.name === 'Subject')?.value ?? '(no subject)'
+    }));
 
-    setEmails(sorted);
+    setAllEmails(mapped);
+    setView('email');
   };
 
-  const fetchSendersCount = async () => {
-    const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100', {
-      headers: { Authorization: `Bearer ${tokens.access_token}` }
-    });
-    const { messages } = await res.json();
-    if (!messages) return;
+  const showEmailBySize = () => {
+    setEmails([...allEmails].sort((a, b) => b.sizeEstimate - a.sizeEstimate));
+    setView('email');
+  };
 
-    const detailed = await Promise.all(messages.map(async (msg) => {
-      const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata`, {
-        headers: { Authorization: `Bearer ${tokens.access_token}` }
-      });
-      return await msgRes.json();
-    }));
-
+  const showEmailBySender = () => {
     const senderCount = {};
-    detailed.forEach(m => {
-      const from = m.payload?.headers?.find(h => h.name === 'From')?.value ?? 'unknown';
-      senderCount[from] = (senderCount[from] || 0) + 1;
+    allEmails.forEach(m => {
+      senderCount[m.from] = (senderCount[m.from] || 0) + 1;
     });
-
-    const list = Object.entries(senderCount)
-      .map(([sender, count]) => ({ sender, count }))
+    const list = Object.entries(senderCount).map(([sender, count]) => ({ sender, count }))
       .sort((a, b) => b.count - a.count);
-
     setSenderStats(list);
+    setView('senders');
   };
-  
-    const fetchPhotos = async () => {
+
+  const fetchPhotos = async () => {
     const res = await fetch('https://photoslibrary.googleapis.com/v1/mediaItems?pageSize=100', {
       headers: { Authorization: `Bearer ${tokens.access_token}` }
     });
     const { mediaItems } = await res.json();
     if (!mediaItems) return;
-
     const mapped = mediaItems.map(item => ({
       id: item.id,
       name: item.filename,
       size: item.mediaMetadata?.fileSize || 0,
       albumId: item.productUrl?.match(/\/album\/([\w-]+)/)?.[1],
-      checksum: item.filename // you can hash this if needed
+      checksum: item.filename
     }));
-
     const sorted = mapped.sort((a, b) => b.size - a.size);
     setFiles(sorted);
     setView('photos');
@@ -177,7 +164,7 @@ function App() {
     }
     setFiles(dupes);
   };
-  
+
   const thStyle = { borderBottom: '1px solid #ccc', padding: '8px', textAlign: 'left' };
   const tdStyle = { borderBottom: '1px solid #eee', padding: '8px' };
 
@@ -189,7 +176,7 @@ function App() {
         ) : (
           <>
             <p>✅ Logged in as: {email}</p>
-            <button onClick={() => { setTokens(null); setEmail(''); setFiles([]); setEmails([]); setSenderStats([]); setView(''); }}>
+            <button onClick={() => { setTokens(null); setEmail(''); setFiles([]); setEmails([]); setSenderStats([]); setAllEmails([]); setView(''); }}>
               Logout
             </button>
             <button onClick={() => { fetchFiles(); setView('drive'); }}>
@@ -198,11 +185,14 @@ function App() {
             <button onClick={() => { findDuplicates(); setView('duplicates'); }} style={{ marginLeft: 10 }}>
               🔍 Find Duplicates
             </button>
-            <button onClick={() => { fetchEmailSizes(); setView('email'); }} style={{ marginLeft: 10 }}>
-              📧 Fetch Gmail Emails (ordered by size)
+            <button onClick={() => { loadAllEmails(); }} style={{ marginLeft: 10 }}>
+              📧 Load Gmail Emails
             </button>
-            <button onClick={() => { fetchSendersCount(); setView('senders'); }} style={{ marginLeft: 10 }}>
-              👤 Count Emails by Sender (ordered by count)
+            <button onClick={() => { showEmailBySize(); }} style={{ marginLeft: 10 }}>
+              📧 Show Emails by Size
+            </button>
+            <button onClick={() => { showEmailBySender(); }} style={{ marginLeft: 10 }}>
+              👤 Show Emails by Sender
             </button>
             <button onClick={fetchPhotos} style={{ marginLeft: 10 }}>
               🖼 Fetch Google Photos (ordered by size)
@@ -232,43 +222,43 @@ function App() {
                           <a href={`https://drive.google.com/drive/folders/${file.parents[0]}`} target="_blank" rel="noopener noreferrer">
                             Open Folder
                           </a>
-                        ) : (
-                          '—'
-                        )}
+                        ) : '—'}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             )}
+
             {view === 'photos' && (
-               <table style={{ marginTop: 20, borderCollapse: 'collapse', width: '100%' }}>
-                 <thead>
-                   <tr>
-                     <th style={thStyle}>File Name</th>
-                     <th style={thStyle}>Size (MB)</th>
-                     <th style={thStyle}>Checksum</th>
-                     <th style={thStyle}>Folder</th>
-                   </tr>
-                 </thead>
-                 <tbody>
-                   {files.map(file => (
-                     <tr key={file.id}>
-                       <td style={tdStyle}>{file.name}</td>
-                       <td style={tdStyle}>{(file.size / 1024 / 1024).toFixed(2)}</td>
-                       <td style={tdStyle}>{file.checksum}</td>
-                       <td style={tdStyle}>
-                         {file.albumId ? (
-                           <a href={`https://photos.google.com/album/${file.albumId}`} target="_blank" rel="noreferrer">
-                             Open Album
-                           </a>
-                         ) : '—'}
-                       </td>
-                     </tr>
-                   ))}
-                 </tbody>
-               </table>
+              <table style={{ marginTop: 20, borderCollapse: 'collapse', width: '100%' }}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>File Name</th>
+                    <th style={thStyle}>Size (MB)</th>
+                    <th style={thStyle}>Checksum</th>
+                    <th style={thStyle}>Folder</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {files.map(file => (
+                    <tr key={file.id}>
+                      <td style={tdStyle}>{file.name}</td>
+                      <td style={tdStyle}>{(file.size / 1024 / 1024).toFixed(2)}</td>
+                      <td style={tdStyle}>{file.checksum}</td>
+                      <td style={tdStyle}>
+                        {file.albumId ? (
+                          <a href={`https://photos.google.com/album/${file.albumId}`} target="_blank" rel="noreferrer">
+                            Open Album
+                          </a>
+                        ) : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
+
             {view === 'email' && (
               <table>
                 <thead>
@@ -282,21 +272,13 @@ function App() {
                   {emails.map((email) => (
                     <tr key={email.id}>
                       <td>
-                        <a
-                          href={`https://mail.google.com/mail/u/0/#all/${email.id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
+                        <a href={`https://mail.google.com/mail/u/0/#all/${email.id}`} target="_blank" rel="noopener noreferrer">
                           {email.subject}
                         </a>
                       </td>
                       <td>{(email.sizeEstimate / 1024 / 1024).toFixed(2)}</td>
                       <td>
-                        <a
-                          href={`https://mail.google.com/mail/u/0/#search/from%3A${encodeURIComponent(email.from)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
+                        <a href={`https://mail.google.com/mail/u/0/#search/from%3A${encodeURIComponent(email.from)}`} target="_blank" rel="noopener noreferrer">
                           {email.from}
                         </a>
                       </td>
@@ -318,11 +300,7 @@ function App() {
                   {senderStats.map((item, index) => (
                     <tr key={index}>
                       <td>
-                        <a
-                          href={`https://mail.google.com/mail/u/0/#search/from%3A${encodeURIComponent(item.sender)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
+                        <a href={`https://mail.google.com/mail/u/0/#search/from%3A${encodeURIComponent(item.sender)}`} target="_blank" rel="noopener noreferrer">
                           {item.sender}
                         </a>
                       </td>
