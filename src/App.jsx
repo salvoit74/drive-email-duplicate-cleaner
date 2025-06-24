@@ -90,46 +90,48 @@ function App() {
     setProgress(0);
     let all = [];
     let pageToken = '';
-    try {
-      do {
-        const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100&pageToken=${pageToken}`, {
-          headers: { Authorization: `Bearer ${tokens.access_token}` }
-        });
-        const json = await res.json();
-        if (json.messages) all = all.concat(json.messages);
-        pageToken = json.nextPageToken || '';
-        // Optionally update progress by pages fetched (can't know total pages easily though)
-      } while (pageToken);
+    let totalMessages = 0;
   
-      // Fetch detailed metadata with progress update
-      const detailed = [];
-      for (let i = 0; i < all.length; i++) {
-        const msg = all[i];
-        const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata`, {
-          headers: { Authorization: `Bearer ${tokens.access_token}` }
-        });
-        detailed.push(await msgRes.json());
-        setProgress(((i + 1) / all.length) * 100);  // update progress in %
-      }
+    // First get total number of messages to calculate progress
+    const initialRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/profile`, {
+      headers: { Authorization: `Bearer ${tokens.access_token}` }
+    });
+    const profile = await initialRes.json();
+    totalMessages = profile.emailAddress ? profile.messagesTotal : 0;
   
-      const mapped = detailed.map(m => ({
-        id: m.id,
-        sizeEstimate: m.sizeEstimate,
-        from: m.payload?.headers?.find(h => h.name === 'From')?.value ?? 'unknown',
-        subject: m.payload?.headers?.find(h => h.name === 'Subject')?.value ?? '(no subject)'
-      }));
+    do {
+      const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100&pageToken=${pageToken}`, {
+        headers: { Authorization: `Bearer ${tokens.access_token}` }
+      });
+      const json = await res.json();
+      if (json.messages) all = all.concat(json.messages);
+      pageToken = json.nextPageToken || '';
+    } while (pageToken);
   
-      setAllEmails(mapped);
-      setView('email');
-    } catch (e) {
-      console.error('Error loading emails:', e);
-    } finally {
-      setLoading(false);
+    let processed = 0;
+    const detailed = [];
+  
+    for (const msg of all) {
+      const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata`, {
+        headers: { Authorization: `Bearer ${tokens.access_token}` }
+      });
+      const msgJson = await msgRes.json();
+      detailed.push(msgJson);
+  
+      processed++;
+      setProgress(Math.floor((processed / all.length) * 100));
     }
-  };
-
-  const showEmailBySize = () => {
-    setEmails([...allEmails].sort((a, b) => b.sizeEstimate - a.sizeEstimate));
+  
+    const mapped = detailed.map(m => ({
+      id: m.id,
+      sizeEstimate: m.sizeEstimate,
+      from: m.payload?.headers?.find(h => h.name === 'From')?.value ?? 'unknown',
+      subject: m.payload?.headers?.find(h => h.name === 'Subject')?.value ?? '(no subject)'
+    }));
+  
+    setAllEmails(mapped);
+    setEmails(mapped);
+    setLoading(false);
     setView('email');
   };
 
