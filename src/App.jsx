@@ -117,12 +117,16 @@ const loadAllEmails = async () => {
     const detailed = [];
   
     for (const msg of all) {
-      const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata`, {
-        headers: { Authorization: `Bearer ${tokens.access_token}` }
-      });
-      const msgJson = await msgRes.json();
-      detailed.push(msgJson);
-  
+      const msgRes = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`, 
+        { headers: { Authorization: `Bearer ${tokens.access_token}` } }
+      );
+      const msgData = await msgRes.json();
+      const from = msgData.payload.headers.find(h => h.name === 'From')?.value ?? 'unknown';
+      const subject = msgData.payload.headers.find(h => h.name === 'Subject')?.value ?? '(no subject)';
+      const date = msgData.payload.headers.find(h => h.name === 'Date')?.value ?? '(no date)';
+      const sizeEstimate = msgData.sizeEstimate;
+      detailed.push({ id: msgData.id, from, subject, date, sizeEstimate });
       processed++;
       setProgress(Math.floor((processed / all.length) * 100));
     }
