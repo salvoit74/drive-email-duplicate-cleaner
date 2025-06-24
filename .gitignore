@@ -3,6 +3,8 @@
 
 #Notes and Old Version 
 *.txt
+#Personal SCRIPT
+*.cmd
 
 # Logs
 logs
