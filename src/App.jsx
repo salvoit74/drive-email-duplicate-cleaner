@@ -10,6 +10,9 @@ function App() {
   const [view, setView] = useState('');
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [totalMessages, setTotalMessages] = useState(0);
+  const [loadedMessages, setLoadedMessages] = useState(0);
+
 
   const CLIENT_ID = '97567018283-qhsa8t5j1s1ae563p0ae632dmrruqgeh.apps.googleusercontent.com';
   const REDIRECT_URI = 'https://salvoit74.github.io/drive-email-duplicate-cleaner';
@@ -84,27 +87,29 @@ function App() {
     }
     setFiles(duplicates);
   };
+  
+  const fetchTotalEmailCount = async () => {
+    const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/labels/INBOX', {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    const data = await res.json();
+    setTotalMessages(data.messagesTotal || 0);
+  };
 
-  const loadAllEmails = async () => {
-    setLoading(true);
-    setProgress(0);
+
+const loadAllEmails = async () => {
+    await fetchTotalEmailCount();
     let all = [];
     let pageToken = '';
-    let totalMessages = 0;
-  
-    // First get total number of messages to calculate progress
-    const initialRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/profile`, {
-      headers: { Authorization: `Bearer ${tokens.access_token}` }
-    });
-    const profile = await initialRes.json();
-    totalMessages = profile.emailAddress ? profile.messagesTotal : 0;
-  
     do {
       const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100&pageToken=${pageToken}`, {
-        headers: { Authorization: `Bearer ${tokens.access_token}` }
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
       });
       const json = await res.json();
-      if (json.messages) all = all.concat(json.messages);
+      if (json.messages) {
+        all = all.concat(json.messages);
+        setLoadedMessages(all.length);
+      }
       pageToken = json.nextPageToken || '';
     } while (pageToken);
   
@@ -132,7 +137,10 @@ function App() {
     setAllEmails(mapped);
     setEmails(mapped);
     setLoading(false);
+    setAllEmails(mapped);
     setView('email');
+
+
   };
 
   const showEmailBySender = () => {
@@ -189,7 +197,7 @@ function App() {
     <>
       {loading && (
         <div style={{ margin: '10px 0' }}>
-          <p>Loading emails... {progress.toFixed(0)}%</p>
+            <p>Loading emails: {loadedMessages} / {totalMessages}</p>
             <progress value={progress} max="100" style={{ width: '100%' }} />
         </div>
       )}
